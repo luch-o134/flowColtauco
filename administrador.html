@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrador - FlowColtauco</title>
+    <link rel="stylesheet" href="administrador.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Supabase SDK -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="border-container">
+        <div class="container">
+            <div class="admin-icon">
+                <i class="fas fa-user-shield"></i>
+            </div>
+            <h1>Acceso Administrador</h1>
+            <p>Ingrese sus credenciales para continuar</p>
+            
+            <form id="loginForm">
+                <div class="input-group">
+                    <i class="fas fa-user"></i>
+                    <input type="text" id="username" name="username" placeholder="Usuario" required>
+                </div>
+                
+                <div class="input-group">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" name="password" placeholder="Contraseña" required>
+                    <i class="fas fa-eye toggle-password" onclick="togglePassword()"></i>
+                </div>
+                
+                <div class="error-message" id="errorMessage" style="display: none;"></div>
+                
+                <button type="submit" class="login-btn">
+                    <i class="fas fa-sign-in-alt"></i> Iniciar Sesión
+                </button>
+            </form>
+            
+            <div class="buttons-container">
+                <button class="back-btn" onclick="window.location.href='index.html'">
+                    <i class="fas fa-arrow-left"></i> Volver
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 🔥 Configuración de Supabase
+        const SUPABASE_URL = 'https://fzyehmypypgahsdeeuru.supabase.co'
+        const SUPABASE_ANON_KEY = 'sb_publishable_7ADTK4f_Wu-4Pb74x7BijQ_ncvgw4Ai'
+        
+        // Inicializar Supabase
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.querySelector('.toggle-password');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorMessage = document.getElementById('errorMessage');
+            const loginBtn = document.querySelector('.login-btn');
+            
+            // Limpiar mensaje de error anterior
+            errorMessage.style.display = 'none';
+            
+            // Mostrar estado de carga
+            const originalContent = loginBtn.innerHTML;
+            loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+            loginBtn.disabled = true;
+            
+            try {
+                // Buscar usuario en Supabase
+                const { data: users, error } = await supabase
+                    .from('administradores')
+                    .select('*')
+                    .eq('username', username)
+                    .eq('password', password)
+                    .eq('active', true);
+
+                if (error) {
+                    console.error('Error de Supabase:', error);
+                    throw new Error('Error de conexión con la base de datos');
+                }
+
+                if (!users || users.length === 0) {
+                    throw new Error('Usuario o contraseña incorrectos');
+                }
+
+                const user = users[0];
+
+                // Login exitoso
+                console.log('Login exitoso:', user);
+                
+                // Guardar datos del usuario en localStorage
+                localStorage.setItem('admin_user', JSON.stringify({
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    role: user.role || 'admin'
+                }));
+
+                // Actualizar último login
+                const { error: updateError } = await supabase
+                    .from('administradores')
+                    .update({ last_login: new Date().toISOString() })
+                    .eq('id', user.id);
+
+                if (updateError) {
+                    console.warn('No se pudo actualizar last_login:', updateError);
+                }
+
+                // Mostrar éxito brevemente
+                loginBtn.innerHTML = '<i class="fas fa-check"></i> ¡Acceso Concedido!';
+                loginBtn.style.backgroundColor = '#10b981';
+                
+                // ✅ CAMBIO: Redirigir a agregarstock.html
+                setTimeout(() => {
+                    window.location.href = 'agregarstock.html';
+                }, 1500);
+                
+            } catch (error) {
+                console.error('Error de login:', error);
+                errorMessage.textContent = error.message;
+                errorMessage.style.display = 'block';
+                
+                // Restaurar botón original
+                loginBtn.innerHTML = originalContent;
+                loginBtn.disabled = false;
+                loginBtn.style.backgroundColor = '#0078d4';
+            }
+        });
+
+        // Verificar si ya hay una sesión activa
+        document.addEventListener('DOMContentLoaded', function() {
+            const adminUser = localStorage.getItem('admin_user');
+            if (adminUser) {
+                // ✅ CAMBIO: Si ya está logueado, redirigir a agregarstock.html
+                console.log('Usuario ya logueado, redirigiendo...');
+                window.location.href = 'agregarstock.html';
+            }
+        });
+    </script>
+</body>
+</html>
