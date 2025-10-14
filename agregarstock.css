@@ -900,11 +900,13 @@ body::before {
     .products-table {
         font-size: 12px;
         border-radius: 10px;
+        width: 94%;
     }
     
     .products-table th,
     .products-table td {
         padding: 10px 6px;
+        width: auto;
     }
 }
 

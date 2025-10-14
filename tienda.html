@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tienda</title>
+    <link rel="stylesheet" href="tienda.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fontawesome.com/icons/whatsapp?f=brands&s=solid">
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="barra-sup">
+        <div class="logo-container">
+            <img src="imagenes/logo.png" alt="Logo" class="logo">
+        </div>
+        <div class="contenido-derecha">
+            <button class="carrito-btn" onclick="toggleCarrito()">
+                <i class="fas fa-shopping-cart"></i>
+                <span class="carrito-count" id="carritoCount">0</span>
+            </button>
+            <button class="logout-btn" onclick="logout()">Salir</button>
+        </div>
+    </div>
+
+    <!-- Modal del Carrito -->
+    <div class="carrito-modal" id="carritoModal">
+        <div class="carrito-content">
+            <div class="carrito-header">
+                <h2 class="carrito-title">Mi Carrito</h2>
+                <button class="cerrar-carrito" onclick="toggleCarrito()">×</button>
+            </div>
+            <div class="carrito-items" id="carritoItems">
+                <!-- Los items del carrito se insertan aquí -->
+            </div>
+            <div class="carrito-total">
+                <div class="total-precio" id="totalPrecio">Total: $0</div>
+                <div class="carrito-actions">
+                    <button class="btn-continuar" onclick="toggleCarrito()">Continuar Comprando</button>
+                    <button class="btn-finalizar" onclick="finalizarCompra()">Finalizar Compra por <i class="fa-brands fa-whatsapp"></i> WhatsApp</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="contenido-principal">
+        <div class="buscador-container">
+            <h2>Buscar Zapatillas</h2>
+            <div class="filtros">
+                <input type="text" id="buscarMarca" placeholder="Buscar por marca..." class="input-buscar">
+                <input type="text" id="buscarModelo" placeholder="Buscar por modelo..." class="input-buscar">
+                <select id="filtroTalla" class="select-filtro">
+                    <option value="">Todas las tallas</option>
+                </select>
+                <button onclick="buscarZapatillas()" class="btn-buscar">Buscar</button>
+            </div>
+        </div>
+
+        <div class="resultados-container">
+            <div id="resultados" class="grid-zapatillas">
+                <!-- Aquí se mostrarán las zapatillas -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuración de Supabase
+        const SUPABASE_URL = 'https://fzyehmypypgahsdeeuru.supabase.co'
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6eWVobXlweXBnYWhzZGVldXJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAyMDgyNzIsImV4cCI6MjA3NTc4NDI3Mn0.syfon_7V7ADkB81ZfP14bWc1HpuBlN1ZRpe843h8D-E'
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+        // Cargar tallas disponibles al iniciar
+        async function cargarTallas() {
+            try {
+                const { data, error } = await supabase
+                    .from('zapatillas')
+                    .select('talla')
+                
+                if (error) throw error;
+
+                const tallas = [...new Set(data.map(item => item.talla))].sort();
+                const select = document.getElementById('filtroTalla');
+                
+                tallas.forEach(talla => {
+                    const option = document.createElement('option');
+                    option.value = talla;
+                    option.textContent = talla;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error cargando tallas:', error);
+            }
+        }
+
+        // Función para buscar zapatillas
+        async function buscarZapatillas() {
+            const marca = document.getElementById('buscarMarca').value.toLowerCase();
+            const modelo = document.getElementById('buscarModelo').value.toLowerCase();
+            const talla = document.getElementById('filtroTalla').value;
+
+            try {
+                let query = supabase.from('zapatillas').select('*');
+
+                // Aplicar filtros
+                if (marca) {
+                    query = query.ilike('marca', `%${marca}%`);
+                }
+                if (modelo) {
+                    query = query.ilike('modelo', `%${modelo}%`);
+                }
+                if (talla) {
+                    query = query.eq('talla', talla);
+                }
+
+                const { data, error } = await query;
+                
+                if (error) throw error;
+
+                mostrarResultados(data);
+            } catch (error) {
+                console.error('Error buscando zapatillas:', error);
+                document.getElementById('resultados').innerHTML = 
+                    '<p class="error">Error al buscar zapatillas</p>';
+            }
+        }
+
+        // Variables del carrito
+        let carrito = JSON.parse(localStorage.getItem('carrito')) || [];
+
+        // Función para mostrar resultados (actualizada con botón de carrito)
+        function mostrarResultados(zapatillas) {
+            const container = document.getElementById('resultados');
+            
+            if (zapatillas.length === 0) {
+                container.innerHTML = '<p class="no-resultados">No se encontraron zapatillas</p>';
+                return;
+            }
+
+            const html = zapatillas.map(zapatilla => `
+                <div class="tarjeta-zapatilla">
+                    <div class="imagen-container">
+                        <img src="${zapatilla.imagen || 'imagenes/placeholder.jpg'}" 
+                             alt="${zapatilla.marca} ${zapatilla.modelo}" 
+                             class="imagen-zapatilla">
+                    </div>
+                    <div class="info-zapatilla">
+                        <h3 class="marca-modelo">${zapatilla.marca} ${zapatilla.modelo}</h3>
+                        <p class="talla">Talla: ${zapatilla.talla}</p>
+                        <p class="cantidad">Stock: ${zapatilla.cantidad}</p>
+                        <p class="precio">$${zapatilla.precio?.toLocaleString() || 'N/A'}</p>
+                        <button class="btn-agregar-carrito" onclick="agregarAlCarrito(${zapatilla.id}, '${zapatilla.marca}', '${zapatilla.modelo}', '${zapatilla.talla}', ${zapatilla.precio}, '${zapatilla.imagen || 'imagenes/placeholder.jpg'}')">
+                            <i class="fas fa-cart-plus"></i> Agregar al Carrito
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            container.innerHTML = html;
+        }
+
+        // Funciones del carrito
+        function eliminarDelCarrito(itemId) {
+            carrito = carrito.filter(item => item.id !== itemId);
+            localStorage.setItem('carrito', JSON.stringify(carrito));
+            actualizarCarrito();
+            renderizarCarrito();
+        }
+
+        function cambiarCantidad(itemId, nuevaCantidad) {
+            if (nuevaCantidad <= 0) {
+                eliminarDelCarrito(itemId);
+                return;
+            }
+
+            const item = carrito.find(i => i.id === itemId);
+            if (item) {
+                item.cantidad = nuevaCantidad;
+                localStorage.setItem('carrito', JSON.stringify(carrito));
+                actualizarCarrito();
+                renderizarCarrito();
+            }
+        }
+
+        function actualizarCarrito() {
+            const count = carrito.reduce((total, item) => total + item.cantidad, 0);
+            document.getElementById('carritoCount').textContent = count;
+        }
+
+        function toggleCarrito() {
+            const modal = document.getElementById('carritoModal');
+            if (modal.style.display === 'block') {
+                modal.style.display = 'none';
+            } else {
+                modal.style.display = 'block';
+                renderizarCarrito();
+            }
+        }
+
+        function renderizarCarrito() {
+            const container = document.getElementById('carritoItems');
+            const totalElement = document.getElementById('totalPrecio');
+
+            if (carrito.length === 0) {
+                container.innerHTML = `
+                    <div class="carrito-vacio">
+                        <div class="carrito-vacio-icono">🛒</div>
+                        <p>Tu carrito está vacío</p>
+                    </div>
+                `;
+                totalElement.textContent = 'Total: $0';
+                return;
+            }
+
+            const html = carrito.map(item => `
+                <div class="carrito-item">
+                    <img src="${item.imagen}" alt="${item.marca} ${item.modelo}" class="carrito-item-imagen">
+                    <div class="carrito-item-info">
+                        <h4 class="carrito-item-nombre">${item.marca} ${item.modelo}</h4>
+                        <p class="carrito-item-detalles">Talla: ${item.talla}</p>
+                    </div>
+                    <div class="carrito-item-precio">$${item.precio.toLocaleString()}</div>
+                    <div class="cantidad-controls">
+                        <button class="cantidad-btn" onclick="cambiarCantidad('${item.id}', ${item.cantidad - 1})">-</button>
+                        <span class="cantidad-display">${item.cantidad}</span>
+                        <button class="cantidad-btn" onclick="cambiarCantidad('${item.id}', ${item.cantidad + 1})">+</button>
+                    </div>
+                    <button class="eliminar-item" onclick="eliminarDelCarrito('${item.id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            container.innerHTML = html;
+
+            const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
+            totalElement.textContent = `Total: $${total.toLocaleString()}`;
+        }
+
+        function finalizarCompra() {
+            if (carrito.length === 0) {
+                alert('Tu carrito está vacío');
+                return;
+            }
+
+            // Crear mensaje personalizado para WhatsApp
+            const nombreTienda = "Flow Coltauco";
+            const numeroWhatsApp = "56993577986"; // Cambia por tu número real (incluye código de país sin +)
+            
+            let mensaje = `¡Hola! Me interesa realizar la siguiente compra desde ${nombreTienda}:\n\n`;
+            mensaje += `*DETALLES DEL PEDIDO:*\n`;
+            mensaje += `━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            
+            let subtotal = 0;
+            carrito.forEach((item, index) => {
+                const totalItem = item.precio * item.cantidad;
+                subtotal += totalItem;
+                
+                mensaje += `${index + 1}. *${item.marca} ${item.modelo}*\n`;
+                mensaje += `   Talla: ${item.talla}\n`;
+                mensaje += `   Cantidad: ${item.cantidad}\n`;
+                mensaje += `   Precio unitario: $${item.precio.toLocaleString()}\n`;
+                mensaje += `   Subtotal: $${totalItem.toLocaleString()}\n\n`;
+            });
+            
+            mensaje += `━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            mensaje += `*TOTAL: $${subtotal.toLocaleString()}*\n`;
+            mensaje += `Total de productos: ${carrito.length}\n`;
+            mensaje += `Fecha: ${new Date().toLocaleDateString('es-CL')}\n\n`;
+            mensaje += `¿Podrías confirmarme la disponibilidad y coordinar la entrega? \n\n`;
+            mensaje += `¡Gracias! `;
+
+            // Codificar el mensaje para URL
+            const mensajeCodificado = encodeURIComponent(mensaje);
+            
+            // Crear URL de WhatsApp
+            const urlWhatsApp = `https://wa.me/${numeroWhatsApp}?text=${mensajeCodificado}`;
+            
+            // Abrir WhatsApp en nueva ventana
+            window.open(urlWhatsApp, '_blank');
+            
+            // Mostrar confirmación
+            const confirmacion = confirm('¡Pedido enviado a WhatsApp! 📱\n\n¿Deseas limpiar el carrito?');
+            
+            if (confirmacion) {
+                // Limpiar carrito
+                carrito = [];
+                localStorage.setItem('carrito', JSON.stringify(carrito));
+                actualizarCarrito();
+                toggleCarrito();
+                
+                // Mostrar notificación de éxito
+                mostrarNotificacion('¡Carrito limpiado! Gracias por tu compra 🎉');
+            }
+        }
+
+        // Función mejorada para mostrar notificaciones
+        function mostrarNotificacion(mensaje, tipo = 'success') {
+            const notif = document.createElement('div');
+            
+            const colores = {
+                'success': { bg: '#10b981', icon: '✅' },
+                'info': { bg: '#3b82f6', icon: 'ℹ️' },
+                'warning': { bg: '#f59e0b', icon: '⚠️' },
+                'error': { bg: '#ef4444', icon: '❌' }
+            };
+            
+            const config = colores[tipo] || colores['success'];
+            
+            notif.style.cssText = `
+                position: fixed;
+                top: 100px;
+                right: 20px;
+                background: ${config.bg};
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                z-index: 3000;
+                font-weight: 600;
+                box-shadow: 0 4px 15px ${config.bg}50;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-width: 300px;
+                animation: slideIn 0.3s ease;
+            `;
+            
+            notif.innerHTML = `
+                <span style="font-size: 16px;">${config.icon}</span>
+                <span>${mensaje}</span>
+            `;
+            
+            // Agregar animación CSS
+            if (!document.querySelector('#notif-styles')) {
+                const style = document.createElement('style');
+                style.id = 'notif-styles';
+                style.textContent = `
+                    @keyframes slideIn {
+                        from { transform: translateX(100%); opacity: 0; }
+                        to { transform: translateX(0); opacity: 1; }
+                    }
+                    @keyframes slideOut {
+                        from { transform: translateX(0); opacity: 1; }
+                        to { transform: translateX(100%); opacity: 0; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            document.body.appendChild(notif);
+
+            // Remover con animación
+            setTimeout(() => {
+                notif.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notif.remove(), 300);
+            }, 4000);
+        }
+
+        // Función auxiliar para agregar al carrito (con mejor notificación)
+        function agregarAlCarrito(id, marca, modelo, talla, precio, imagen) {
+            const item = {
+                id: `${id}_${talla}`,
+                productoId: id,
+                marca,
+                modelo,
+                talla,
+                precio,
+                imagen,
+                cantidad: 1
+            };
+
+            const existeItem = carrito.find(i => i.id === item.id);
+            
+            if (existeItem) {
+                existeItem.cantidad++;
+                mostrarNotificacion(`${marca} ${modelo} (Talla ${talla}) - Cantidad actualizada`, 'info');
+            } else {
+                carrito.push(item);
+                mostrarNotificacion(`${marca} ${modelo} agregado al carrito 🛒`);
+            }
+
+            localStorage.setItem('carrito', JSON.stringify(carrito));
+            actualizarCarrito();
+        }
+
+        // Cerrar modal al hacer clic fuera
+        document.getElementById('carritoModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                toggleCarrito();
+            }
+        });
+
+        // Búsqueda en tiempo real
+        document.getElementById('buscarMarca').addEventListener('input', buscarZapatillas);
+        document.getElementById('buscarModelo').addEventListener('input', buscarZapatillas);
+        document.getElementById('filtroTalla').addEventListener('change', buscarZapatillas);
+
+        // Control de scroll para ocultar/mostrar barra superior
+        let lastScrollTop = 0;
+        const navbar = document.querySelector('.barra-sup');
+
+        window.addEventListener('scroll', function() {
+            let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            
+            if (scrollTop > lastScrollTop && scrollTop > 100) {
+                // Scrolling hacia abajo y pasó 100px - ocultar barra
+                navbar.classList.add('hidden');
+            } else {
+                // Scrolling hacia arriba - mostrar barra
+                navbar.classList.remove('hidden');
+            }
+            
+            lastScrollTop = scrollTop;
+        });
+
+        // Cargar todas las zapatillas al inicio
+        async function cargarTodasLasZapatillas() {
+            try {
+                const { data, error } = await supabase
+                    .from('zapatillas')
+                    .select('*')
+                    .order('marca', { ascending: true });
+                
+                if (error) throw error;
+                mostrarResultados(data);
+            } catch (error) {
+                console.error('Error cargando zapatillas:', error);
+                document.getElementById('resultados').innerHTML = 
+                    '<p class="error">Error al cargar las zapatillas</p>';
+            }
+        }
+
+        // Función logout
+        function logout() {
+            if (confirm('¿Estás seguro de que quieres salir?')) {
+                window.location.href = 'index.html';
+            }
+        }
+
+        // Inicializar al cargar la página
+        window.addEventListener('load', () => {
+            cargarTallas();
+            cargarTodasLasZapatillas(); // Esta función ahora existe
+            actualizarCarrito();
+        });
+    </script>
+</body>
+</html>
