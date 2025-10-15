@@ -123,6 +123,28 @@
                 </form>
             </div>
 
+            <!-- Sección móvil para eliminar zapatillas -->
+            <div class="mobile-delete-section">
+                <h2><i class="fas fa-trash-alt"></i> Eliminar Zapatilla</h2>
+                <form class="mobile-delete-form" id="mobileDeleteForm">
+                    <div class="mobile-select-container">
+                        <select id="mobileDeleteSelect" class="mobile-select" required>
+                            <option value="">Seleccionar zapatilla a eliminar...</option>
+                        </select>
+                        <i class="fas fa-chevron-down mobile-select-icon"></i>
+                    </div>
+                    
+                    <div class="mobile-delete-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Esta acción no se puede deshacer
+                    </div>
+                    
+                    <button type="submit" class="mobile-delete-btn" id="mobileDeleteBtn">
+                        <i class="fas fa-trash"></i> Eliminar Zapatilla
+                    </button>
+                </form>
+            </div>
+
             <!-- Lista de zapatillas -->
             <div class="products-section">
                 <h2>
@@ -141,8 +163,12 @@
                 </div>
                 <div id="productsList">
                     <div class="info">
-                        <i class="fas fa-info-circle"></i>
-                        Haz clic en "Actualizar" para ver las zapatillas registradas
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Cargando zapatillas registradas...
+                    </div>
+                    <div class="mobile-table-message">
+                        <i class="fas fa-mobile-alt"></i>
+                        En dispositivos móviles, usa la sección "Eliminar Zapatilla" arriba para gestionar productos
                     </div>
                 </div>
             </div>
@@ -174,6 +200,9 @@
                 
                 // Cargar select de zapatillas sin cargar la tabla completa
                 loadProductsForSelect();
+                
+                // 🔥 AGREGAR: Cargar productos automáticamente al iniciar
+                loadProducts();
             } else {
                 window.location.href = 'administrador.html';
             }
@@ -391,10 +420,20 @@
             const productsList = document.getElementById('productsList');
 
             if (products.length === 0) {
-                productsList.innerHTML = '<p class="no-products">No hay zapatillas registradas</p>';
+                productsList.innerHTML = `
+                    <p class="no-products">No hay zapatillas registradas</p>
+                    <div class="mobile-products-view">
+                        <div class="mobile-empty-state">
+                            <i class="fas fa-running"></i>
+                            <p>No hay zapatillas registradas</p>
+                            <p style="font-size: 12px; margin-top: 10px;">Agrega tu primera zapatilla usando el formulario superior</p>
+                        </div>
+                    </div>
+                `;
                 return;
             }
 
+            // Vista desktop (tabla completa)
             const table = `
                 <table class="products-table">
                     <thead>
@@ -434,7 +473,26 @@
                     </tbody>
                 </table>
             `;
-            productsList.innerHTML = table;
+
+            // Vista móvil SIMPLIFICADA (solo imagen y modelo)
+            const mobileView = `
+                <div class="mobile-products-view">
+                    ${products.map(product => `
+                        <div class="mobile-product-card">
+                            ${product.imagen ? 
+                                `<img src="${product.imagen}" alt="Imagen" class="mobile-product-image" loading="lazy">` 
+                                : '<div class="mobile-no-image">Sin img</div>'
+                            }
+                            <div class="mobile-product-info">
+                                <div class="mobile-product-brand">${product.marca}</div>
+                                <div class="mobile-product-model">${product.modelo}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            productsList.innerHTML = table + mobileView;
         }
 
         // Cargar solo para el select (más rápido)
@@ -448,16 +506,24 @@
 
                 if (error) throw error;
 
+                // Cargar select normal
                 const select = document.getElementById('existingProduct');
                 select.innerHTML = '<option value="">Seleccionar zapatilla</option>';
                 
+                // Cargar select móvil
+                const mobileSelect = document.getElementById('mobileDeleteSelect');
+                mobileSelect.innerHTML = '<option value="">Seleccionar zapatilla a eliminar...</option>';
+                
                 products.forEach(product => {
-                    select.innerHTML += `<option value="${product.id}">${product.marca} ${product.modelo} - Talla ${product.talla} (Stock: ${product.cantidad})</option>`;
+                    const option = `<option value="${product.id}">${product.marca} ${product.modelo} - Talla ${product.talla} (Stock: ${product.cantidad})</option>`;
+                    select.innerHTML += option;
+                    mobileSelect.innerHTML += option;
                 });
 
             } catch (error) {
                 console.error('Error:', error);
                 document.getElementById('existingProduct').innerHTML = '<option value="">Error al cargar</option>';
+                document.getElementById('mobileDeleteSelect').innerHTML = '<option value="">Error al cargar</option>';
             }
         }
 
@@ -515,6 +581,76 @@
             localStorage.removeItem('admin_user');
             window.location.href = 'index.html';
         }
+
+        // Cargar zapatillas para el select móvil de eliminación
+        async function loadProductsForMobileDelete() {
+            try {
+                const { data: products, error } = await supabase
+                    .from('zapatillas')
+                    .select('id, marca, modelo, talla, cantidad')
+                    .order('marca')
+                    .limit(100);
+
+                if (error) throw error;
+
+                const select = document.getElementById('mobileDeleteSelect');
+                select.innerHTML = '<option value="">Seleccionar zapatilla a eliminar...</option>';
+                
+                products.forEach(product => {
+                    select.innerHTML += `<option value="${product.id}">${product.marca} ${product.modelo} - Talla ${product.talla} (Stock: ${product.cantidad})</option>`;
+                });
+
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('mobileDeleteSelect').innerHTML = '<option value="">Error al cargar</option>';
+            }
+        }
+
+        // Manejar eliminación desde móvil
+        document.getElementById('mobileDeleteForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const productId = document.getElementById('mobileDeleteSelect').value;
+            const submitBtn = document.getElementById('mobileDeleteBtn');
+            const originalText = submitBtn.innerHTML;
+
+            if (!productId) {
+                alert('Por favor selecciona una zapatilla');
+                return;
+            }
+
+            if (!confirm('¿Estás seguro de que quieres eliminar esta zapatilla?\n\nEsta acción no se puede deshacer.')) {
+                return;
+            }
+
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando...';
+            submitBtn.disabled = true;
+
+            try {
+                const { error } = await supabase
+                    .from('zapatillas')
+                    .delete()
+                    .eq('id', productId);
+
+                if (error) throw error;
+
+                // Invalidar cache y recargar
+                productsCache = null;
+                document.getElementById('mobileDeleteForm').reset();
+                await Promise.all([
+                    loadProductsForSelect(), 
+                    loadProductsForMobileDelete()
+                ]);
+
+                alert('Zapatilla eliminada exitosamente');
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error al eliminar: ' + error.message);
+            } finally {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+        });
     </script>
 </body>
 </html>
